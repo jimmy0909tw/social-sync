@@ -217,9 +217,12 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# 專案專屬：忽略所有平台的獨立 API/密鑰 JSON 設定檔
+# 忽略所有設定檔與金鑰 JSON
 config/*.json
 !config/.gitkeep
 
-# 忽略導出的數據檔
+# Python 產生的暫存檔
+__pycache__/
+*.pyc
 *.csv
+venv/
