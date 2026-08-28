@@ -1,1 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>社群媒體數據監控中心</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background-color: #f4f7f6; }
+        h1 { color: #333; }
+        .control-panel { margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; }
+        button { padding: 10px 15px; font-size: 14px; border: none; border-radius: 4px; cursor: pointer; background-color: #007bff; color: white; transition: 0.2s; }
+        button:hover { background-color: #0056b3; }
+        button.btn-success { background-color: #28a745; }
+        button.btn-success:hover { background-color: #218838; }
+        button.platform-btn { background-color: #6c757d; }
+        button.platform-btn:hover { background-color: #5a6268; }
+        
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; font-weight: bold; }
+        tr:hover { background-color: #f1f1f1; }
+        .status-tag { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    </style>
+</head>
+<body>
 
+    <h1>社群媒體數據監控儀表板</h1>
+
+    <!-- 平台按鈕區 -->
+    <div class="control-panel">
+        <button onclick="fetchAllData()" class="btn-success">更新所有平台數據</button>
+        <button onclick="exportCSV()" class="btn-success">匯出成 CSV</button>
+    </div>
+
+    <div class="control-panel">
+        <button class="platform-btn" onclick="fetchSingle('instagram')">Instagram</button>
+        <button class="platform-btn" onclick="fetchSingle('facebook')">Facebook</button>
+        <button class="platform-btn" onclick="fetchSingle('tiktok')">TikTok</button>
+        <button class="platform-btn" onclick="fetchSingle('x')">X (Twitter)</button>
+        <button class="platform-btn" onclick="fetchSingle('reddit')">Reddit</button>
+        <button class="platform-btn" onclick="fetchSingle('threads')">Threads</button>
+        <button class="platform-btn" onclick="fetchSingle('youtube')">YouTube</button>
+        <button class="platform-btn" onclick="fetchSingle('pinterest')">Pinterest</button>
+    </div>
+
+    <!-- 數據顯示表格 -->
+    <table>
+        <thead>
+            <tr>
+                <th>平台</th>
+                <th>點擊數 (Clicks)</th>
+                <th>觀看數 (Views)</th>
+                <th>互動點數 (Engagement)</th>
+                <th>連線狀態</th>
+            </tr>
+        </thead>
+        <tbody id="metrics-table-body">
+            <tr>
+                <td colspan="5" style="text-align:center;">點擊上方按鈕開始抓取數據...</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <script>
+        const platformsData = {};
+
+        function updateTable() {
+            const tbody = document.getElementById('metrics-table-body');
+            tbody.innerHTML = '';
+
+            Object.values(platformsData).forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${item.platform}</strong></td>
+                    <td>${item.clicks ?? 0}</td>
+                    <td>${item.views ?? 0}</td>
+                    <td>${item.points_engagement ?? 0}</td>
+                    <td><span class="status-tag">${item.status}</span></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        async function fetchSingle(platform) {
+            try {
+                const res = await fetch(`/api/fetch/${platform}`);
+                const result = await res.json();
+                if(result.status === 'success') {
+                    platformsData[platform] = result.data;
+                    updateTable();
+                }
+            } catch (err) {
+                console.error("Error fetching data:", err);
+            }
+        }
+
+        async function fetchAllData() {
+            try {
+                const res = await fetch('/api/fetch/all');
+                const result = await res.json();
+                if(result.status === 'success') {
+                    result.data.forEach(item => {
+                        platformsData[item.platform.toLowerCase()] = item;
+                    });
+                    updateTable();
+                }
+            } catch (err) {
+                console.error("Error fetching all data:", err);
+            }
+        }
+
+        function exportCSV() {
+            window.location.href = '/api/export/csv';
+        }
+    </script>
+</body>
+</html>
