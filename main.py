@@ -4,8 +4,8 @@ import pandas as pd
 from datetime import datetime
 from flask import Flask, render_template, jsonify, send_file, request
 
-base_dir = os.path.dirname(os.path.abspath(__file__))
-app = Flask(__name__, template_folder=base_dir)
+# 使用標準初始化，預設尋找根目錄下的 templates/ 資料夾
+app = Flask(__name__)
 
 latest_metrics_data = []
 COLLECTORS = {}
@@ -19,7 +19,8 @@ def calculate_ctr(clicks, views):
 def index():
     return render_template("index.html")
 
-@app.route("/api/fetch/<platform_name>", methods=["GET"])
+# 將單一平台路由增加 /platform/ 子路徑，避免與 /api/fetch/all 產生衝突
+@app.route("/api/fetch/platform/<platform_name>", methods=["GET"])
 def fetch_single(platform_name):
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if platform_name in COLLECTORS:
@@ -99,4 +100,5 @@ def export_csv():
     )
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
