@@ -1,83 +1,102 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>跨平台社群數據監控儀表板</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f8f9fa; }
-        h1 { color: #333; }
-        .controls { margin-bottom: 20px; }
-        button { padding: 10px 16px; font-size: 14px; cursor: pointer; margin-right: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; }
-        button:hover { background-color: #0056b3; }
-        .btn-export { background-color: #28a745; }
-        .btn-export:hover { background-color: #218838; }
-        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        th, td { padding: 12px; border: 1px solid #dee2e6; text-align: left; }
-        th { background-color: #f1f3f5; font-weight: bold; }
-        tr:nth-child(even) { background-color: #f8f9fa; }
-        .num-col { text-align: right; }
-    </style>
-</head>
-<body>
+import os
+import io
+import pandas as pd
+from datetime import datetime
+from flask import Flask, render_template, jsonify, send_file, request
 
-    <h1>跨平台社群數據監控儀表板</h1>
-    
-    <div class="controls">
-        <button onclick="loadMetrics()">刷新全平台數據</button>
-        <a href="/api/export/csv"><button class="btn-export">匯出 CSV 報表</button></a>
-    </div>
+base_dir = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, template_folder=base_dir)
 
-    <table>
-        <thead>
-            <tr>
-                <th>平台</th>
-                <th>內容 ID</th>
-                <th>標題 / 內文</th>
-                <th class="num-col">觀看數</th>
-                <th class="num-col">點擊數</th>
-                <th class="num-col">點擊率 (%)</th>
-                <th>更新時間</th>
-            </tr>
-        </thead>
-        <tbody id="metrics-body">
-            <tr><td colspan="7" style="text-align:center;">點擊「刷新全平台數據」載入數據...</td></tr>
-        </tbody>
-    </table>
+latest_metrics_data = []
+COLLECTORS = {}
 
-    <script>
-        async function loadMetrics() {
-            const body = document.getElementById('metrics-body');
-            body.innerHTML = '<tr><td colspan="7" style="text-align:center;">資料讀取中...</td></tr>';
-            
-            try {
-                const response = await fetch('/api/fetch/all');
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    body.innerHTML = '';
-                    result.data.forEach(item => {
-                        const row = `
-                            <tr>
-                                <td><strong>${item.platform}</strong></td>
-                                <td><code>${item.post_id}</code></td>
-                                <td>${item.title}</td>
-                                <td class="num-col">${item.views.toLocaleString()}</td>
-                                <td class="num-col">${item.clicks.toLocaleString()}</td>
-                                <td class="num-col">${item['ctr_%']}%</td>
-                                <td>${item.timestamp}</td>
-                            </tr>
-                        `;
-                        body.innerHTML += row;
-                    });
-                }
-            } catch (err) {
-                body.innerHTML = '<tr><td colspan="7" style="text-align:center; color:red;">數據載入失敗</td></tr>';
-            }
+def calculate_ctr(clicks, views):
+    if views and views > 0:
+        return round((clicks / views) * 100, 2)
+    return 0.0
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+@app.route("/api/fetch/<platform_name>", methods=["GET"])
+def fetch_single(platform_name):
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if platform_name in COLLECTORS:
+        data = COLLECTORS[platform_name].fetch_metrics()
+    else:
+        clicks = 120
+        views = 3400
+        data = {
+            "platform": platform_name.capitalize(),
+            "post_id": f"{platform_name[:2]}_001",
+            "title": f"模擬測試貼文 ({platform_name.capitalize()})",
+            "views": views,
+            "clicks": clicks,
+            "ctr_%": calculate_ctr(clicks, views),
+            "timestamp": current_time
         }
+    return jsonify({"status": "success", "data": data})
 
-        // 頁面載入時自動刷新一次
-        window.onload = loadMetrics;
-    </script>
-</body>
-</html>
+@app.route("/api/fetch/all", methods=["GET"])
+def fetch_all():
+    platforms = ["instagram", "facebook", "tiktok", "x", "reddit", "threads", "youtube", "pinterest"]
+    results = []
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    for p in platforms:
+        if p in COLLECTORS:
+            data = COLLECTORS[p].fetch_metrics()
+        else:
+            clicks = 0
+            views = 0
+            data = {
+                "platform": p.capitalize(),
+                "post_id": f"{p[:2]}_001",
+                "title": f"預設貼文 ({p.capitalize()})",
+                "views": views,
+                "clicks": clicks,
+                "ctr_%": calculate_ctr(clicks, views),
+                "timestamp": current_time
+            }
+        results.append(data)
+            
+    global latest_metrics_data
+    latest_metrics_data = results
+    return jsonify({"status": "success", "data": results})
+
+@app.route("/api/export/csv", methods=["GET"])
+def export_csv():
+    global latest_metrics_data
+    if not latest_metrics_data:
+        fetch_all()
+
+    df = pd.DataFrame(latest_metrics_data)
+    
+    # 映射欄位表頭為指定中文名稱
+    headers_map = {
+        "platform": "平台",
+        "post_id": "內容 ID",
+        "title": "標題 / 內文",
+        "views": "觀看數",
+        "clicks": "點擊數",
+        "ctr_%": "點擊率 (%)",
+        "timestamp": "更新時間"
+    }
+    
+    df = df.reindex(columns=list(headers_map.keys()))
+    df.rename(columns=headers_map, inplace=True)
+
+    output = io.BytesIO()
+    df.to_csv(output, index=False, encoding="utf-8-sig")
+    output.seek(0)
+
+    return send_file(
+        output,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="social_media_metrics.csv"
+    )
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
