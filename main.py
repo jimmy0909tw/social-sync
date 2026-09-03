@@ -2,17 +2,15 @@ import os
 import io
 import pandas as pd
 from datetime import datetime
-from typing import List, Dict, Any
 from flask import Flask, render_template, jsonify, send_file, request
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, template_folder=base_dir)
 
-latest_metrics_data: List[Dict[str, Any]] = []
-COLLECTORS: Dict[str, Any] = {}
+latest_metrics_data = []
+COLLECTORS = {}
 
-def calculate_ctr(clicks: int, views: int) -> float:
-    """計算點擊率 (%)，保留兩位小數"""
+def calculate_ctr(clicks, views):
     if views and views > 0:
         return round((clicks / views) * 100, 2)
     return 0.0
@@ -21,40 +19,49 @@ def calculate_ctr(clicks: int, views: int) -> float:
 def index():
     return render_template("index.html")
 
+@app.route("/api/fetch/<platform_name>", methods=["GET"])
+def fetch_single(platform_name):
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if platform_name in COLLECTORS:
+        data = COLLECTORS[platform_name].fetch_metrics()
+    else:
+        clicks = 120
+        views = 3400
+        data = {
+            "platform": platform_name.capitalize(),
+            "post_id": f"{platform_name[:2]}_001",
+            "title": f"模擬測試貼文 ({platform_name.capitalize()})",
+            "views": views,
+            "clicks": clicks,
+            "ctr_%": calculate_ctr(clicks, views),
+            "timestamp": current_time
+        }
+    return jsonify({"status": "success", "data": data})
+
 @app.route("/api/fetch/all", methods=["GET"])
 def fetch_all():
-    global latest_metrics_data
+    platforms = ["instagram", "facebook", "tiktok", "x", "reddit", "threads", "youtube", "pinterest"]
     results = []
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    # 模擬 8 個平台的測試貼文資料，結構符合新版 headers 要求
-    mock_platforms = [
-        {"platform": "YouTube", "post_id": "yt_001", "title": "【教學】Python 自動化社群儀表板專案實作", "views": 12500, "clicks": 850},
-        {"platform": "Instagram", "post_id": "ig_102", "title": "社群數據追蹤術！一張圖看懂關鍵指標", "views": 8400, "clicks": 420},
-        {"platform": "Facebook", "post_id": "fb_305", "title": "【最新消息】我們的跨平台數據監控系統上線囉！", "views": 5600, "clicks": 210},
-        {"platform": "TikTok", "post_id": "tk_881", "title": "15秒帶你看懂行銷自動化！ #python #dashbaord", "views": 32000, "clicks": 1100},
-        {"platform": "X (Twitter)", "post_id": "tw_904", "title": "Building a modular social dashboard with Python & Firebase. 🚀", "views": 4100, "clicks": 180},
-        {"platform": "Reddit", "post_id": "rd_512", "title": "[Showoff Sunday] Open source social analytics dashboard", "views": 2900, "clicks": 310},
-        {"platform": "Threads", "post_id": "th_201", "title": "大家平常都是怎麼追蹤各社群平台點擊數據的？", "views": 1800, "clicks": 95},
-        {"platform": "Pinterest", "post_id": "pin_603", "title": "Social Media Dashboard UI Architecture Blueprint", "views": 3100, "clicks": 140}
-    ]
-
-    for item in mock_platforms:
-        # 若未來已註冊真實 Collector 則從 API 抓取，否則預設使用模擬資料
-        p_name = item["platform"].lower()
-        if p_name in COLLECTORS:
-            data = COLLECTORS[p_name].fetch_metrics()
+    
+    for p in platforms:
+        if p in COLLECTORS:
+            data = COLLECTORS[p].fetch_metrics()
         else:
-            data = item
-
-        # 計算點擊率並補上更新時間
-        views = data.get("views", 0)
-        clicks = data.get("clicks", 0)
-        data["ctr_%"] = calculate_ctr(clicks, views)
-        data["timestamp"] = current_time
-        
+            clicks = 0
+            views = 0
+            data = {
+                "platform": p.capitalize(),
+                "post_id": f"{p[:2]}_001",
+                "title": f"預設貼文 ({p.capitalize()})",
+                "views": views,
+                "clicks": clicks,
+                "ctr_%": calculate_ctr(clicks, views),
+                "timestamp": current_time
+            }
         results.append(data)
-
+            
+    global latest_metrics_data
     latest_metrics_data = results
     return jsonify({"status": "success", "data": results})
 
@@ -66,7 +73,7 @@ def export_csv():
 
     df = pd.DataFrame(latest_metrics_data)
     
-    # 重新整理欄位順序並重新命名 CSV 標頭
+    # 映射欄位表頭為指定中文名稱
     headers_map = {
         "platform": "平台",
         "post_id": "內容 ID",
@@ -77,7 +84,6 @@ def export_csv():
         "timestamp": "更新時間"
     }
     
-    # 確保導出的 CSV 遵循此欄位順序
     df = df.reindex(columns=list(headers_map.keys()))
     df.rename(columns=headers_map, inplace=True)
 
